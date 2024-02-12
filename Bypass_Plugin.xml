@@ -139,7 +139,6 @@ function bypass_add(name,line,wildcards)
 
     local bypass_level = tonumber(wildcards[1])
 	local bypass_area = wildcards[2]
-	local current_level = current_level
 
 	if not bypass_level or not bypass_area then
 		print("Error: Must be bypass_add [number] [area]")
@@ -157,8 +156,8 @@ function bypass_add(name,line,wildcards)
 		count = count + 1
 	end
 	
-	if (count > 2 and 200 > current_level) or (count > 3 and current_level == 200) then
-		print("2 areas already entered for this level. Remove one (bypass_remove [ID]) and try again.")
+	if (count > 2 and 200 > bypass_level) or (count > 3 and bypass_level ~= 200) then
+		print("Too many areas entered for this level. Remove one (bypass_remove [ID]) and try again.")
 		for row in db:nrows(check_query) do
 			print("Level: " .. row.level .. ", Area: " .. row.area .. ", ID: " .. row.id)
 		end
@@ -302,7 +301,7 @@ function bypass_clear()
 
     -- Recreate the table
     print("Recreating table 'bypass_list'")
-    create_bypass_table(db)
+	create_bypass_table(db)
 
     db:close()  -- Close the database connection
 end
