@@ -23,15 +23,12 @@ Type 'keyring_clean' to remove all duplicates from your keyring.
 <trigger
     enabled="n"
     match="{keyring}"
-    name="start_keyring"
+    name="start_keydata"
     omit_from_output="y"
     sequence="100"
     send_to="14"
 >
 <send>
-    expiring_inventory = {}
-    EnableTrigger("keydata", true)
-    EnableTrigger("end_keydata", true)
 </send>
 </trigger>
  
@@ -42,19 +39,19 @@ Type 'keyring_clean' to remove all duplicates from your keyring.
     omit_from_output="y"
     sequence="100"
     send_to="14"
-    script="keyring_cleanup"
 >
 <send>
---    ReorderExpiringItems()
-    EnableTrigger("keydata", false)
+    keyring_cleanup()
+    EnableTrigger("start_keyring", false)
     EnableTrigger("end_keydata", false)
+    EnableTrigger("get_keydata", false)
 </send>
 </trigger>
  
 <trigger
     enabled="n"
     match="^(\d+),(\w*),(.+),(\d+),(\d+),([01]),(-?\d+),(-?\d+)"
-    name="keydata"
+    name="get_keydata"
     omit_from_output="y"
     regexp="y"
     sequence="100"
@@ -76,6 +73,8 @@ Type 'keyring_clean' to remove all duplicates from your keyring.
 >
 <send>
     EnableTrigger("start_keyring", true)
+    EnableTrigger("get_keydata", true)
+    EnableTrigger("end_keydata", true)
     SendNoEcho("keyring data")
 </send>
 </alias>
@@ -92,10 +91,6 @@ function parseInvdata(name, line, wildcards, styles)
 end
 
 function keyring_cleanup()
-    table.sort(keyring_data, function(a, b)
-        return a.objectname < b.objectname
-    end)
-
     local seen_names = {}
     for i, data in ipairs(keyring_data) do
         if seen_names[data.objectname] then
