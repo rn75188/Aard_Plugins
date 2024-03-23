@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+<muclient>
+<plugin
+    name="Keyring_Cleaner"
+    author="Tipro"
+    id="53ec934b096057c88c0254b3"
+    language="Lua"
+    purpose="Remove duplicate items from keyring."
+    date_written="2024-03-23 22:45:00"
+    requires="4.70"
+    version="1.0"
+    >
+<description trim="y">
+Type 'keyring_clean' to remove all duplicates from your keyring.
+</description>
+</plugin>
+ 
+<!--  Triggers  -->
+ 
+<triggers>
+ 
+<trigger
+    enabled="n"
+    match="{keyring}"
+    name="start_keyring"
+    omit_from_output="y"
+    sequence="100"
+    send_to="14"
+>
+<send>
+    expiring_inventory = {}
+    EnableTrigger("keydata", true)
+    EnableTrigger("end_keydata", true)
+</send>
+</trigger>
+ 
+<trigger
+    enabled="n"
+    match="{/keyring}"
+    name="end_keydata"
+    omit_from_output="y"
+    sequence="100"
+    send_to="14"
+    script="keyring_cleanup"
+>
+<send>
+--    ReorderExpiringItems()
+    EnableTrigger("keydata", false)
+    EnableTrigger("end_keydata", false)
+</send>
+</trigger>
+ 
+<trigger
+    enabled="n"
+    match="^(\d+),(\w*),(.+),(\d+),(\d+),([01]),(-?\d+),(-?\d+)"
+    name="keydata"
+    omit_from_output="y"
+    regexp="y"
+    sequence="100"
+    send_to="14"
+    script="parseInvdata"
+>
+</trigger>
+</triggers>
+ 
+<aliases>
+ 
+<alias
+    match="^keyring_clean$"
+    regexp="y"
+    enabled="y"
+    sequence="100"
+    ignore_case="y"
+    send_to="12"
+>
+<send>
+    EnableTrigger("start_keyring", true)
+    SendNoEcho("keyring data")
+</send>
+</alias>
+ 
+</aliases>
+ 
+<script>
+<![CDATA[
+
+keyring_data = {}
+ 
+function parseInvdata(name, line, wildcards, styles)
+     table.insert(keyring_data, {objectid = wildcards[1], objectname = wildcards[3]})
+end
+
+function keyring_cleanup()
+    table.sort(keyring_data, function(a, b)
+        return a.objectname < b.objectname
+    end)
+
+    local seen_names = {}
+    for i, data in ipairs(keyring_data) do
+        if seen_names[data.objectname] then
+            SendNoEcho("keyring get " .. data.objectid)
+            SendNoEcho("drop " .. data.objectid)
+        else
+            seen_names[data.objectname] = true
+        end
+    end
+end
+ 
+]]>
+</script>
+</muclient>
