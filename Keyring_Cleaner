@@ -85,21 +85,26 @@ Type 'keyring_clean' to remove all duplicates from your keyring.
 <![CDATA[
 
 keyring_data = {}
- 
+
 function parseInvdata(name, line, wildcards, styles)
      table.insert(keyring_data, {objectid = wildcards[1], objectname = wildcards[3]})
 end
 
 function keyring_cleanup()
     local seen_names = {}
+
+    table.sort(keyring_data, function(a, b)
+        return a.objectname < b.objectname
+    end)
+
     for i, data in ipairs(keyring_data) do
         if seen_names[data.objectname] then
             SendNoEcho("keyring get " .. data.objectid)
-            SendNoEcho("drop " .. data.objectid)
         else
             seen_names[data.objectname] = true
         end
     end
+    keyring_data = {}
 end
  
 ]]>
