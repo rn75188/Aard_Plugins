@@ -12,7 +12,7 @@
    version="1.0"
    >
 <description trim="y">
-Type 'fullprac' to practice all available skills and spells. Note this does NOT guarantee you have enough practices available.
+Type 'fullprac' to practice all available skills and spells.
 </description>
 </plugin>
 
@@ -115,6 +115,7 @@ Type 'fullprac' to practice all available skills and spells. Note this does NOT 
 >
 <send>
    EnableTrigger("slist_start", true)
+   SendNoEcho("gain reconvertall")
    SendNoEcho("slist")
 </send>
 </alias>
@@ -149,6 +150,7 @@ function start_practice()
       print("Total number of spells practiced: " .. #capture_slist)
       capture_slist = {}
    end
+   SendNoEcho("gain convertall")
 end
 
 ]]>
