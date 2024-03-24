@@ -15,6 +15,9 @@
    requires="5.07"
    version="1.0"
    >
+<description trim="y">
+Type 'fullprac' to practice all available skills & spells. Note this does NOT guarantee you have enough practices available.
+</description>
 </plugin>
 
 <!--  Triggers  -->
