@@ -90,8 +90,12 @@ function parseInvdata(name, line, wildcards, styles)
      table.insert(keyring_data, {objectid = wildcards[1], objectname = wildcards[3]})
 end
 
+-- Add missing import statement for the print function
+local print = print
+
 function keyring_cleanup()
     local seen_names = {}
+    local duplicate_count = 0
 
     table.sort(keyring_data, function(a, b)
         return a.objectname < b.objectname
@@ -101,13 +105,18 @@ function keyring_cleanup()
         if seen_names[data.objectname] then
             SendNoEcho("keyring get " .. data.objectid)
             SendNoEcho("drop " .. data.objectid)
+            duplicate_count = duplicate_count + 1
         else
             seen_names[data.objectname] = true
         end
     end
-    if #seen_names == 0 then
+
+    if duplicate_count == 0 then
         print("You have no duplicates in your keyring.")
+    else
+        print(duplicate_count .. " duplicates removed from keyring.")
     end
+
     keyring_data = {}
 end
  
