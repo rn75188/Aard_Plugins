@@ -10,13 +10,14 @@
    name="fullprac"
    author="Tipro"
    id="658c138e17cb6f295ff0804d"
+   purpose="Type fullprac to practice all available skills and spells."
    language="Lua"
    date_written="2023-03-05 13:28:23"
    requires="5.07"
    version="1.0"
    >
 <description trim="y">
-Type 'fullprac' to practice all available skills & spells. Note this does NOT guarantee you have enough practices available.
+Type 'fullprac' to practice all available skills and spells. Note this does NOT guarantee you have enough practices available.
 </description>
 </plugin>
 
