@@ -72,7 +72,7 @@ Type 'keyring_clean' to remove all duplicates from your keyring.
     send_to="12"
 >
 <send>
-    EnableTrigger("start_keyring", true)
+    EnableTrigger("start_keydata", true)
     EnableTrigger("get_keydata", true)
     EnableTrigger("end_keydata", true)
     SendNoEcho("keyring data")
@@ -104,6 +104,9 @@ function keyring_cleanup()
         else
             seen_names[data.objectname] = true
         end
+    end
+    if #seen_names == 0 then
+        print("You have no duplicates in your keyring.")
     end
     keyring_data = {}
 end
