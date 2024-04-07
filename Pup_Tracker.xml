@@ -78,26 +78,10 @@
 <aliases>
 
   <alias
-   enabled="y"
-   match="^ *pup_tracker_set *(?<pup_tracker_set>.*) *$"
-   regexp="y"
-   sequence="100"
-   script="pup_tracker_set"
-  >
-  </alias>
-  
-  <alias
   enabled="y"
-  match="^ *pup_tracker_report *$"
+  match="^ *pup report*$"
   regexp="y"
-  script="report_area_totals"
-/>
-
-<alias
-  enabled="y"
-  match="^ *pup_tracker_reset *$"
-  regexp="y"
-  script="reset_pup_tracker"
+  script="report_totals"
 />
   
 </aliases>
@@ -110,8 +94,12 @@ pups = 0
 first_pup_time = os.time()
 last_pup_time = os.time()
 channel = "spouse"
-previous_gold = current_gold or 0
-solo = 1
+current_gold = 0
+previous_gold = 0
+solo = 1        --Used to track whether user is pupping solo or in group. 0 = grouped, 1 = solo
+reload = 0      --Used to discard first pup after script is loaded
+current_date = os.date("%Y-%m-%d")
+char_subclass = "Unknown"
 
 -- [[ Plugin installation ]]
 function OnPluginInstall()
@@ -119,14 +107,13 @@ function OnPluginInstall()
 	local db_path = GetInfo(66) .. "\\pup_tracker.db"
 	local db = assert(sqlite3.open(db_path))
 	
-	create_bypass_table(db)
+	create_pup_table(db)
 	
 	db:close()
 	print("Database initialized.")
-	print("Type bypass_help to see available commands")
 end
 
-function create_bypass_table(db)
+function create_pup_table(db)
 	local db_tables = {}
 	local query = "SELECT name FROM sqlite_master WHERE type='table'"
 	local create_tables = {}
@@ -161,13 +148,11 @@ function OnPluginBroadcast(msg, id, name, text)
     if (text == "room.info") then
        roominfo = gmcp("room.info")
        current_area = roominfo.zone
-	end
-	if (text == "char.worth") then
+	elseif (text == "char.worth") then
 		charworth = gmcp("char.worth")
 		current_gold = charworth.gold
 		if previous_gold == 0 then previous_gold = current_gold end
-	end
-    if (text == "group") then
+    elseif (text == "group") then
         members = gmcp("group.members")
         solo = 1
         for i, member in ipairs(members) do
@@ -175,12 +160,13 @@ function OnPluginBroadcast(msg, id, name, text)
                 solo = 0
             end
         end
+    elseif (text == "char.base") then
+		charbase = gmcp("char.base")
+		char_subclass = charbase.subclass
     end
   end
 end
 
-
-pup_data = {}
 
 function get_pup_tracker()
     local saved_tracker = GetVariable('pup_tracker')
@@ -202,7 +188,7 @@ function Bonus_on()
 end
 
 function pupDB()
-    local db_path = GetInfo(66) .. "\\pup_data.db"
+    local db_path = GetInfo(66) .. "\\pup_tracker.db"
     local db, err = assert(sqlite3.open(db_path))
     
     if not db then
@@ -210,94 +196,48 @@ function pupDB()
         return
     end
     
-    local now = os.time()
-    local seconds = now - last_pup_time
+    local seconds = os.time() - last_pup_time
     if (seconds > 60) then
-        Note('Too slow ... resetting')
+        print(seconds .. " since last pup. Too slow")
         last_pup_time = now
+        reload = 1
+        return
+    elseif (reload == 0) then
+        print("First pup after reload discarded. Try again.")
+        reload = 1
         return
     end
+    last_pup_time = os.time()
     local gold_gained = current_gold - previous_gold
     previous_gold = current_gold
 
-    print (gold_gained, seconds, bonus_on, solo, current_area)
+    print(current_date)
 
-    local insert_sql = string.format("INSERT INTO pup_data (seconds, area, gold, double, solo) VALUES (seconds, current_area, gold_gained, double, solo );")
-		local result, err = db:execute(insert_sql)
+    local insert_sql = string.format("INSERT INTO pup_data (seconds, area, gold, double, solo) VALUES (%d, '%s', %d, '%s', '%s');", seconds, current_area, gold_gained, double, solo)
+    	local result, err = db:execute(insert_sql)
 		if not result then
 			Note("Error inserting pup_data: " .. tostring(err))
-		else
-			Note ("Pup data added: Gold " .. gold_gained .. " Seconds " .. seconds .. " Bonus " .. bonus_on .. " Solo " .. solo .. " Area " .. current_area)
+            print (gold_gained, seconds, bonus_on, solo, current_area)
+        else
+			Note ("Pup stats: Gold " .. gold_gained .. " Seconds " .. seconds .. " Bonus " .. bonus_on .. " Solo " .. solo .. " Area " .. current_area)
 		end
-
     db:close()
 end
 
-function pupGain()
-	local pup_tracker_num = get_pup_tracker()
-	local channel = "spouse"
-
-	if bonus_on == 1 then 
-		bonusPups = bonusPups + 1 
-		Note('Bonus Pups: ' .. bonusPups)
-	end	
-	
-	pups = pups + 1
-	local now = os.time()
-	since_last_pup = now - last_pup_time
-	
-	local gold_gained = 0
-	if current_gold and previous_gold
-		then gold_gained = current_gold - previous_gold
-		previous_gold = current_gold
-	end
-	
-	if since_last_pup > 60 then 
-		Note('Too slow ... resetting')
-		last_pup_time = now
-		pups = 0
-		previous_gold = current_gold
-		first_pup_time = now
-	else Note('Pup speed: ' .. since_last_pup .. '. Gold Gained: ' .. gold_gained)
-		last_pup_time = now
-        if current_area then
-            if not last_pup_area or current_area == last_pup_area then
-                update_pup_data(current_area,since_last_pup,gold_gained)
-            end
-            last_pup_area = current_area
-		end
-	end
-	
-	if pups >= pup_tracker_num then
-		local averagespeed = (now - first_pup_time) / pups
-		local rounded_averagespeed = string.format("%.1f", averagespeed)
-		SendNoEcho(channel .. ' Average Last ' .. pup_tracker_num .. ' pups: ' .. rounded_averagespeed)
-		pups = 0
-		first_pup_time = now
-	end
+function report_totals()
+    local db_path = GetInfo(66) .. "\\pup_tracker.db"
+    local db = assert(sqlite3.open(db_path))
+    local query = "SELECT area, COUNT(*) as num_pups, AVG(seconds) as avg_seconds, SUM(gold)/SUM(seconds) as avg_gold_per_second FROM pup_data GROUP BY area"
+    local found = false
+    for row in db:nrows(query) do
+        found = true
+        print("Area: " .. row.area .. ", Number of Pups: " .. row.num_pups .. ", Average Seconds: " .. row.avg_seconds .. ", Average Gold per Second: " .. row.avg_gold_per_second)
+    end
+    if not found then
+        print("No pup data found")
+    end
+    db:close()
 end
-
-function update_pup_data(area, since_last_pup, gold_gained)
-    local data = pup_data[area] or {pups = 0, since_last_pup = 0, gold_gained = 0, adjusted_pup_time = 0}
-    data.pups = data.pups + 1
-    data.gold_gained = data.gold_gained + (gold_gained or 0)
-    data.since_last_pup = data.since_last_pup + since_last_pup
-    data.adjusted_pup_time = data.adjusted_pup_time + (since_last_pup * (bonus_on == 1 and 2 or 1))
-    pup_data[area] = data
-end
-
-function report_area_totals()
-  local output = {}
-  for area, data in pairs(pup_data) do
-    local average_speed = string.format("%.1f", data.since_last_pup / data.pups)
-	local average_gold = data.gold_gained / data.pups
-	local average_gps = string.format("%.1f", average_gold / average_speed)
-	local average_adjusted_pup_speed = string.format("%.1f", data.adjusted_pup_time / data.pups)
-	table.insert(output, area .. ". Pups: " .. data.pups .. ". Speed: " .. average_adjusted_pup_speed .. " GPS: " .. average_gps)
-  end
-  SendNoEcho(Note(table.concat(output, "\n")))
-end
-
 
 function reportDbl()
     local channel = "spouse"
