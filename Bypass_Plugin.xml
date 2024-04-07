@@ -75,12 +75,13 @@ function OnPluginBroadcast(msg, id, name, text)
 	if id ~= "3e7dedbe37e44942dd46d264" then -- message from the GMCP Handler
 		return end
 	
-	if (text == "room.info") then
-       roominfo = gmcp("room.info")
-       current_area = roominfo.zone
-	elseif (text == "char.status") then
+	if (text == "char.status") then
        charstatus = gmcp("char.status")
        current_level = tonumber(charstatus.level)
+	elseif (text == "char.stats") then
+		charstats = gmcp("char.stats")
+		current_wis = tonumber(charstats.wis)
+		current_int = tonumber(charstats.int)
 	end
 end
 
@@ -137,7 +138,7 @@ end
 function bypass_add(name,line,wildcards)
 	print("Adding to bypass table")
 
-    local bypass_level = tonumber(wildcards[1])
+	local bypass_level = tonumber(wildcards[1])
 	local bypass_area = wildcards[2]
 
 	if not bypass_level or not bypass_area then
@@ -148,17 +149,18 @@ function bypass_add(name,line,wildcards)
 	local db_path = GetInfo(66) .. "\\bypass.db"
 	local db = assert(sqlite3.open(db_path))
 
-	--Ensure user doesn't already have 2 bypass areas at that level--
-	local check_query = string.format("SELECT * FROM bypass_list WHERE level == %d", bypass_level)
-	local results = db:nrows(check_query)
-	local count = 0
-	for _ in db:nrows(check_query) do
-		count = count + 1
+	--Ensure user doesn't have too many areas bypassed for that level--
+	local check_query = string.format("SELECT COUNT(*) as count FROM bypass_list WHERE level == %d", bypass_level)
+	local count
+	for result in db:nrows(check_query) do
+		count = result.count
+		break
 	end
 	
-	if (count > 2 and 200 > bypass_level) or (count > 3 and bypass_level ~= 200) then
+	if (count > 2 and 200 > bypass_level) or (count > 3 and bypass_level == 200) then
 		print("Too many areas entered for this level. Remove one (bypass_remove [ID]) and try again.")
-		for row in db:nrows(check_query) do
+		local details_query = string.format("SELECT level, area, id FROM bypass_list WHERE level == %d", bypass_level)
+		for row in db:nrows(details_query) do
 			print("Level: " .. row.level .. ", Area: " .. row.area .. ", ID: " .. row.id)
 		end
 		return
@@ -171,19 +173,14 @@ function bypass_add(name,line,wildcards)
 			Note("Bypass added for area '" .. bypass_area .. "' with level " .. bypass_level)
 		end
 	end
-
 	db:close()
-
 end
 
 function bypass_remove(name,line,wildcards)
-	print("Removing item from bypass_list")
 	local bypass_remove = tonumber(wildcards[1])
 		
 	local db_path = GetInfo(66) .. "\\bypass.db"
     local db = assert(sqlite3.open(db_path))
-	
-	-- print(bypass_remove)
 	
 	local entry_query = string.format("SELECT * FROM bypass_list WHERE id = %d", bypass_remove)
 	local entry = db:nrows(entry_query)
@@ -198,6 +195,8 @@ function bypass_remove(name,line,wildcards)
 		bypass_list()
 		return
 	else
+		Note("")
+		print("Removing item from bypass_list")
 		local delete_query = string.format("DELETE FROM bypass_list WHERE id = %d", bypass_remove)
 		local result, err = db:execute(delete_query)
 		if not result then
@@ -272,10 +271,17 @@ end
 function bypass_update(bypass_level)
 	local db_path = GetInfo(66) .. "\\bypass.db"
     local db = assert(sqlite3.open(db_path))
-	
+
+	local max_bypass = 2
+	if current_int + current_wis >= 400 and 600 > current_int + current_wis then 
+		max_bypass = 3
+	elseif current_int + current_wis == 600 then 
+		max_bypass = 4
+	end
+
 	print(bypass_level)
 
-	local query_sql = string.format("SELECT * FROM bypass_list WHERE %d >= level ORDER BY level DESC LIMIT 2;", bypass_level)
+	local query_sql = string.format("SELECT * FROM bypass_list WHERE %d >= level ORDER BY level DESC, id ASC LIMIT %d;", bypass_level, max_bypass)
     local entries = {}
 	Send("bypass clear")
 	for row in db:nrows(query_sql) do
