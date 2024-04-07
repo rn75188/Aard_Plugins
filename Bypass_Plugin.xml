@@ -69,12 +69,12 @@
 <script>
 
 current_level = 0
+char_subclass = ""
 
 require("gmcphelper")
 function OnPluginBroadcast(msg, id, name, text)
 	if id ~= "3e7dedbe37e44942dd46d264" then -- message from the GMCP Handler
-		return end
-	
+		return end	
 	if (text == "char.status") then
        charstatus = gmcp("char.status")
        current_level = tonumber(charstatus.level)
@@ -82,6 +82,9 @@ function OnPluginBroadcast(msg, id, name, text)
 		charstats = gmcp("char.stats")
 		current_wis = tonumber(charstats.wis)
 		current_int = tonumber(charstats.int)
+	elseif (text == "char.base") then
+		charbase = gmcp("char.base")
+		char_subclass = charbase.subclass
 	end
 end
 
@@ -115,7 +118,7 @@ function create_bypass_table(db)
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
 				area TEXT NOT NULL,
 				level INTEGER NOT NULL
-			);
+			);000000000000000000000
 		]])
 	end
 	
@@ -233,10 +236,11 @@ function bypass_list()
 end
 
 function bypass_set()
-	print("Called bypass_set")
 	local bypass_level = current_level
-
-	if not bypass_level or bypass_level == 0 then
+	if char_subclass ~= "Navigator" then
+		print(char_subclass .. "'s can't use bypass, idiot.")
+		return
+	elseif not bypass_level or bypass_level == 0 then
         print("Don't see current level. Go kill something and try again!")
         return
 	end
@@ -246,6 +250,8 @@ function bypass_set()
 end
 
 function bypass_level (name,line,wildcards)
+	if char_subclass ~= "Navigator" then return end
+
 	print("New level detected")
 	local new_level = tonumber(wildcards[1])
 	print(new_level)

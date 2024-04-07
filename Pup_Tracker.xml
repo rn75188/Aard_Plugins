@@ -1,0 +1,322 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+<muclient>
+<plugin
+   name="Pup_Tracker"
+   author="Tipro"
+   id="fd7d81748b3695ba71ecb857"
+   language="Lua"
+   purpose="Track XP"
+   date_written="2023-03-19 16:49:27"
+   requires="5.07"
+   version="1.0"
+   >
+
+</plugin>
+<!--  Triggers  -->
+<triggers>
+
+<trigger
+	name="trigger_doubleStart_SH"
+	match="For the next 15 minutes experience is doubled in honor of the new superhero."
+	enabled="y"
+	omit_from_output="n"
+	sequence="100"
+	script="Bonus_on"
+	send_to="14"
+>
+</trigger>
+
+<trigger
+	name="trigger_doubleStart_donations"
+	match="[    10 minutes of double exp started courtesy of donations being open   ]"
+	enabled="y"
+	omit_from_output="n"
+	sequence="100"
+	script="Bonus_on"
+	send_to="14"
+>
+</trigger>
+
+<trigger
+	name="trigger_doubleStart_db"
+    match="Double experience for 10 minutes courtesy of (.*?)'s daily blessing."
+    enabled="y"
+	omit_from_output="n"
+	sequence="100"
+	script="Bonus_on"
+	send_to="14"
+>
+</trigger>
+
+<trigger
+	match="INFO: Bonus experience has now expired."
+	name="trigger_DblEnd"
+	enabled="y"
+	sequence="100"
+	script="reportDbl"
+	omit_from_output="n"
+>
+</trigger>
+
+<trigger
+	match="Congratulations, Tipro. You have increased your powerups to *."
+	name="trigger_pupGain"
+	enabled="y"
+	sequence="100"
+	script="pupDB"
+	omit_from_output="n"
+>
+<send>
+    
+</send>
+</trigger>
+
+</triggers>
+
+<!--  Aliases  -->
+<aliases>
+
+  <alias
+   enabled="y"
+   match="^ *pup_tracker_set *(?<pup_tracker_set>.*) *$"
+   regexp="y"
+   sequence="100"
+   script="pup_tracker_set"
+  >
+  </alias>
+  
+  <alias
+  enabled="y"
+  match="^ *pup_tracker_report *$"
+  regexp="y"
+  script="report_area_totals"
+/>
+
+<alias
+  enabled="y"
+  match="^ *pup_tracker_reset *$"
+  regexp="y"
+  script="reset_pup_tracker"
+/>
+  
+</aliases>
+
+<script>
+
+bonus_on = 0
+bonusPups = 0
+pups = 0
+first_pup_time = os.time()
+last_pup_time = os.time()
+channel = "spouse"
+previous_gold = current_gold or 0
+solo = 1
+
+-- [[ Plugin installation ]]
+function OnPluginInstall()
+    print("Pup Tracker installed.")
+	local db_path = GetInfo(66) .. "\\pup_tracker.db"
+	local db = assert(sqlite3.open(db_path))
+	
+	create_bypass_table(db)
+	
+	db:close()
+	print("Database initialized.")
+	print("Type bypass_help to see available commands")
+end
+
+function create_bypass_table(db)
+	local db_tables = {}
+	local query = "SELECT name FROM sqlite_master WHERE type='table'"
+	local create_tables = {}
+	
+	for row in db:nrows(query) do
+		db_tables[row.name] = true
+	end
+	
+	if not db_tables["pup_data"] then
+		print("Creating table 'pup_data'")
+		table.insert(create_tables, [[
+			CREATE TABLE pup_data (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				area TEXT NOT NULL,
+				seconds INTEGER NOT NULL,
+                gold INTEGER NOT NULL,
+                double TEXT NOT NULL,
+                solo TEXT NOT NULL
+			);
+		]])
+	end
+
+	if #create_tables > 0 then
+		db:execute(table.concat(create_tables,""))
+	end
+end
+
+require "gmcphelper" -- adds the gmcp() function for simplifying data access
+
+function OnPluginBroadcast(msg, id, name, text)
+  if id == "3e7dedbe37e44942dd46d264" then -- message from the GMCP Handler
+    if (text == "room.info") then
+       roominfo = gmcp("room.info")
+       current_area = roominfo.zone
+	end
+	if (text == "char.worth") then
+		charworth = gmcp("char.worth")
+		current_gold = charworth.gold
+		if previous_gold == 0 then previous_gold = current_gold end
+	end
+    if (text == "group") then
+        members = gmcp("group.members")
+        solo = 1
+        for i, member in ipairs(members) do
+            if member.here == 1 then
+                solo = 0
+            end
+        end
+    end
+  end
+end
+
+
+pup_data = {}
+
+function get_pup_tracker()
+    local saved_tracker = GetVariable('pup_tracker')
+    local pup_tracker = tonumber(saved_tracker) or 5
+    SetVariable('pup_tracker', pup_tracker)
+    return pup_tracker
+end
+
+function pup_tracker_set(name, line, wildcards)
+    local input_tracker = GetAliasWildcard(name, 'pup_tracker_set')
+    local new_pup_tracker = tonumber(input_tracker) or get_pup_tracker()
+    SetVariable('pup_tracker', new_pup_tracker)
+    Note('Tracking Average Pups Over: ' .. new_pup_tracker)
+end
+
+function Bonus_on()
+    print("Dbl tracking activated")
+	bonus_on = 1
+end
+
+function pupDB()
+    local db_path = GetInfo(66) .. "\\pup_data.db"
+    local db, err = assert(sqlite3.open(db_path))
+    
+    if not db then
+        print("Failed to connect to the database: " .. err)
+        return
+    end
+    
+    local now = os.time()
+    local seconds = now - last_pup_time
+    if (seconds > 60) then
+        Note('Too slow ... resetting')
+        last_pup_time = now
+        return
+    end
+    local gold_gained = current_gold - previous_gold
+    previous_gold = current_gold
+
+    print (gold_gained, seconds, bonus_on, solo, current_area)
+
+    local insert_sql = string.format("INSERT INTO pup_data (seconds, area, gold, double, solo) VALUES (seconds, current_area, gold_gained, double, solo );")
+		local result, err = db:execute(insert_sql)
+		if not result then
+			Note("Error inserting pup_data: " .. tostring(err))
+		else
+			Note ("Pup data added: Gold " .. gold_gained .. " Seconds " .. seconds .. " Bonus " .. bonus_on .. " Solo " .. solo .. " Area " .. current_area)
+		end
+
+    db:close()
+end
+
+function pupGain()
+	local pup_tracker_num = get_pup_tracker()
+	local channel = "spouse"
+
+	if bonus_on == 1 then 
+		bonusPups = bonusPups + 1 
+		Note('Bonus Pups: ' .. bonusPups)
+	end	
+	
+	pups = pups + 1
+	local now = os.time()
+	since_last_pup = now - last_pup_time
+	
+	local gold_gained = 0
+	if current_gold and previous_gold
+		then gold_gained = current_gold - previous_gold
+		previous_gold = current_gold
+	end
+	
+	if since_last_pup > 60 then 
+		Note('Too slow ... resetting')
+		last_pup_time = now
+		pups = 0
+		previous_gold = current_gold
+		first_pup_time = now
+	else Note('Pup speed: ' .. since_last_pup .. '. Gold Gained: ' .. gold_gained)
+		last_pup_time = now
+        if current_area then
+            if not last_pup_area or current_area == last_pup_area then
+                update_pup_data(current_area,since_last_pup,gold_gained)
+            end
+            last_pup_area = current_area
+		end
+	end
+	
+	if pups >= pup_tracker_num then
+		local averagespeed = (now - first_pup_time) / pups
+		local rounded_averagespeed = string.format("%.1f", averagespeed)
+		SendNoEcho(channel .. ' Average Last ' .. pup_tracker_num .. ' pups: ' .. rounded_averagespeed)
+		pups = 0
+		first_pup_time = now
+	end
+end
+
+function update_pup_data(area, since_last_pup, gold_gained)
+    local data = pup_data[area] or {pups = 0, since_last_pup = 0, gold_gained = 0, adjusted_pup_time = 0}
+    data.pups = data.pups + 1
+    data.gold_gained = data.gold_gained + (gold_gained or 0)
+    data.since_last_pup = data.since_last_pup + since_last_pup
+    data.adjusted_pup_time = data.adjusted_pup_time + (since_last_pup * (bonus_on == 1 and 2 or 1))
+    pup_data[area] = data
+end
+
+function report_area_totals()
+  local output = {}
+  for area, data in pairs(pup_data) do
+    local average_speed = string.format("%.1f", data.since_last_pup / data.pups)
+	local average_gold = data.gold_gained / data.pups
+	local average_gps = string.format("%.1f", average_gold / average_speed)
+	local average_adjusted_pup_speed = string.format("%.1f", data.adjusted_pup_time / data.pups)
+	table.insert(output, area .. ". Pups: " .. data.pups .. ". Speed: " .. average_adjusted_pup_speed .. " GPS: " .. average_gps)
+  end
+  SendNoEcho(Note(table.concat(output, "\n")))
+end
+
+
+function reportDbl()
+    local channel = "spouse"
+    SendNoEcho(channel .. ' ' .. bonusPups .. ' pups during dbl.')
+    bonusPups = 0
+    bonus_on = 0
+end
+
+function reset_pup_tracker()
+  Note('Pup tracker reset')
+  bonus_on = 0
+  bonusPups = 0
+  pups = 0
+  first_pup_time = os.time()
+  last_pup_time = os.time()
+  pup_data = {}
+end
+
+
+</script>
+
+</muclient>
