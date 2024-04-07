@@ -78,10 +78,24 @@
 <aliases>
 
   <alias
+    enabled="y"
+    match="^ *pup report *(\S*)? *(\S*)? *(\S*)?$"    
+    regexp="y"
+    script="report_totals"
+/>
+
+  <alias
   enabled="y"
-  match="^ *pup report*$"
+  match="^ *pup table reset"
   regexp="y"
-  script="report_totals"
+  script="drop_pup_table"
+/>
+
+  <alias
+  enabled="y"
+  match="^ *pup tracker help"
+  regexp="y"
+  script="pup_helper"
 />
   
 </aliases>
@@ -101,45 +115,48 @@ reload = 0      --Used to discard first pup after script is loaded
 current_date = os.date("%Y-%m-%d")
 char_subclass = "Unknown"
 
--- [[ Plugin installation ]]
 function OnPluginInstall()
     print("Pup Tracker installed.")
-	local db_path = GetInfo(66) .. "\\pup_tracker.db"
-	local db = assert(sqlite3.open(db_path))
-	
-	create_pup_table(db)
-	
-	db:close()
-	print("Database initialized.")
+    print("pup tracker help for commands")
+    local db_path = GetInfo(66) .. "\\pup_tracker.db"
+    local db = assert(sqlite3.open(db_path))
+    
+    create_pup_table(db)
+    
+    db:close()
+    print("Database initialized.")
 end
 
 function create_pup_table(db)
-	local db_tables = {}
-	local query = "SELECT name FROM sqlite_master WHERE type='table'"
-	local create_tables = {}
-	
-	for row in db:nrows(query) do
-		db_tables[row.name] = true
-	end
-	
-	if not db_tables["pup_data"] then
-		print("Creating table 'pup_data'")
-		table.insert(create_tables, [[
-			CREATE TABLE pup_data (
-				id INTEGER PRIMARY KEY AUTOINCREMENT,
-				area TEXT NOT NULL,
-				seconds INTEGER NOT NULL,
+    local db_tables = {}
+    local query = "SELECT name FROM sqlite_master WHERE type='table'"
+    local create_tables = {}
+    
+    for row in db:nrows(query) do
+        db_tables[row.name] = true
+    end
+    
+    if not db_tables["pup_data"] then
+        print("Creating table 'pup_data'")
+        table.insert(create_tables, [[
+            CREATE TABLE pup_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                area TEXT NOT NULL,
+                seconds INTEGER NOT NULL,
                 gold INTEGER NOT NULL,
                 double TEXT NOT NULL,
-                solo TEXT NOT NULL
-			);
-		]])
-	end
+                solo TEXT NOT NULL,
+                date TEXT NOT NULL,
+                subclass TEXT NOT NULL
+            );
+        ]])
+    end
 
-	if #create_tables > 0 then
-		db:execute(table.concat(create_tables,""))
-	end
+    if #create_tables > 0 then
+        db:execute(table.concat(create_tables,""))
+    end
 end
+
 
 require "gmcphelper" -- adds the gmcp() function for simplifying data access
 
@@ -199,45 +216,94 @@ function pupDB()
     local seconds = os.time() - last_pup_time
     if (seconds > 60) then
         print(seconds .. " since last pup. Too slow")
-        last_pup_time = now
+        last_pup_time = os.time()
         reload = 1
         return
     elseif (reload == 0) then
-        print("First pup after reload discarded. Try again.")
+        print("First pup after reload discarded. Keep going.")
         reload = 1
         return
     end
     last_pup_time = os.time()
     local gold_gained = current_gold - previous_gold
+    if 0 > gold_gained then
+        print("Gold loss detected. Ignoring.")
+        gold_gained = 0
+    end
     previous_gold = current_gold
+    current_date = os.date("%Y-%m-%d")
 
-    print(current_date)
+    --print(current_date)
 
-    local insert_sql = string.format("INSERT INTO pup_data (seconds, area, gold, double, solo) VALUES (%d, '%s', %d, '%s', '%s');", seconds, current_area, gold_gained, double, solo)
+    local insert_sql = string.format("INSERT INTO pup_data (seconds, area, gold, double, solo, date, subclass) VALUES (%d, '%s', %d, '%s', '%s', '%s', '%s');", seconds, current_area, gold_gained, double, solo, current_date, char_subclass)
     	local result, err = db:execute(insert_sql)
 		if not result then
 			Note("Error inserting pup_data: " .. tostring(err))
-            print (gold_gained, seconds, bonus_on, solo, current_area)
+            --print (gold_gained, seconds, bonus_on, solo, current_area)
         else
-			Note ("Pup stats: Gold " .. gold_gained .. " Seconds " .. seconds .. " Bonus " .. bonus_on .. " Solo " .. solo .. " Area " .. current_area)
+			--Note ("Pup stats: Gold " .. gold_gained .. " Seconds " .. seconds .. " Bonus " .. bonus_on .. " Solo " .. solo .. " Area " .. current_area)
 		end
     db:close()
 end
 
-function report_totals()
+
+function report_totals(name,line,wildcards)
     local db_path = GetInfo(66) .. "\\pup_tracker.db"
     local db = assert(sqlite3.open(db_path))
-    local query = "SELECT area, COUNT(*) as num_pups, AVG(seconds) as avg_seconds, SUM(gold)/SUM(seconds) as avg_gold_per_second FROM pup_data GROUP BY area"
+
+    local report_type = tostring(wildcards[1]) ~= "" and wildcards[1] or "area"
+    report_type = (report_type == "area" or report_type == "subclass") and report_type or "area"
+
+    local period = tostring(wildcards[2]) ~= "" and wildcards[2] or "all"
+    period = (period == "day" or period == "week" or period == "month" or period == "year" or period == "all") and period or "all"
+
+    local period_days = {
+        day = -1,
+        week = -7,
+        month = -30,
+        year = -365,
+        all = -999999 -- This will select all rows
+    }
+
+    local days = period_days[period]
+
+    local solo_clause = ""
+    if solo_only == "solo" then
+        solo_clause = "AND solo = 1"
+    elseif solo_only == "group" then
+        solo_clause = "AND solo = 0"
+    end
+
+    local query = string.format([[
+        SELECT 
+            area, 
+            COUNT(*) as num_pups, 
+            ROUND(AVG(seconds),1) as avg_seconds, 
+            ROUND(SUM(gold)/SUM(seconds),1) as avg_gold_per_second,
+            MIN(date) as oldest_date
+        FROM pup_data 
+        WHERE date(date) >= date('now', '%d days') 
+        %s
+        GROUP BY area
+    ]], days, solo_clause)
+
     local found = false
+    local oldest_date_printed = false
     for row in db:nrows(query) do
         found = true
-        print("Area: " .. row.area .. ", Number of Pups: " .. row.num_pups .. ", Average Seconds: " .. row.avg_seconds .. ", Average Gold per Second: " .. row.avg_gold_per_second)
+        if not oldest_date_printed then
+            print("Showing pup data since " .. row.oldest_date .. ":")
+            oldest_date_printed = true
+        end
+        print("Area: " .. row.area .. " | Pups: " .. row.num_pups .. " | SecPerPup: " .. row.avg_seconds .. " | GoldPerSec: " .. row.avg_gold_per_second)
     end
     if not found then
         print("No pup data found")
     end
     db:close()
+
 end
+
 
 function reportDbl()
     local channel = "spouse"
@@ -256,6 +322,26 @@ function reset_pup_tracker()
   pup_data = {}
 end
 
+function drop_pup_table()
+    local db_path = GetInfo(66) .. "\\pup_tracker.db"
+    local db = assert(sqlite3.open(db_path))
+    local drop_table_sql = "DROP TABLE IF EXISTS pup_data;"
+    local result, err = db:execute(drop_table_sql)
+    if not result then
+        Note("Error dropping pup_data: " .. tostring(err))
+    else
+        Note("Successfully dropped pup_data table")
+    end
+    db:close()
+
+    OnPluginInstall()
+end
+
+function pup_helper()
+    print("Pup Tracker Help:")
+    print("pup report [area|sublass] [day|week|month|year|all] [solo|group]")
+    print("pup table reset")
+end
 
 </script>
 
