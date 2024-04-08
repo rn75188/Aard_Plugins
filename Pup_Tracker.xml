@@ -240,55 +240,23 @@ function report_totals(name,line,wildcards)
     local db = assert(sqlite3.open(db_path))
 
     local report_type = tostring(wildcards[1])
-
     local period = tostring(wildcards[2]) ~= "" and wildcards[2] or "all"
-    period = (period == "day" or period == "week" or period == "month" or period == "year" or period == "all") and period or "all"
+    local period_days = {day = -1, week = -7, month = -30, year = -365, all = -999999}
+    local days = period_days[period] or period_days["all"]
 
-    local period_days = {
-        day = -1,
-        week = -7,
-        month = -30,
-        year = -365,
-        all = -999999 -- This will select all rows
-    }
-
-    local days = period_days[period]
-
-    local select_clause = 
-        "COUNT(*) as num_pups, " ..
-        "ROUND(AVG(seconds),1) as avg_seconds, " ..
-        "ROUND(SUM(gold)/SUM(seconds),1) as avg_gold_per_second, " ..
-        "MIN(date) as oldest_date"
-
-    if report_type == "subclass" then
-        select_clause = "subclass, " .. select_clause
-    elseif report_type == "area" then
-        select_clause = "area, " .. select_clause
-    end
-
+    local select_clause = "COUNT(*) as num_pups, ROUND(AVG(seconds),1) as avg_seconds, ROUND(SUM(gold)/SUM(seconds),1) as avg_gold_per_second, MIN(date) as oldest_date"
     local where_clause = ""
-    if solo_only == "solo" then
-        where_clause = "AND solo = 1"
-    elseif solo_only == "group" then
-        where_clause = "AND solo = 0"
-    end
-
     local group_by_clause = ""
-    if report_type == "subclass" then
-        group_by_clause = "GROUP BY subclass"
-    elseif report_type == "area" then
-        group_by_clause = "GROUP BY area"
+
+    if report_type == "subclass" or report_type == "area" then
+        select_clause = report_type .. ", " .. select_clause
+        group_by_clause = "GROUP BY " .. report_type
     end
 
-    local query = string.format([[
-        SELECT 
-            %s
-        FROM pup_data 
-        WHERE date(date) >= date('now', '%d days') 
-        %s
-        %s
-    ]], select_clause, days, where_clause, group_by_clause)
+    if solo_only == "solo" then where_clause = "AND solo = 1"
+    elseif solo_only == "group" then where_clause = "AND solo = 0" end
 
+    local query = string.format("SELECT %s FROM pup_data WHERE date(date) >= date('now', '%d days') %s %s", select_clause, days, where_clause, group_by_clause)
 
     local found = false
     local oldest_date_printed = false
@@ -298,19 +266,10 @@ function report_totals(name,line,wildcards)
             print("Showing pup data since " .. row.oldest_date .. ":")
             oldest_date_printed = true
         end
-        if report_type == "subclass" then
-            print("Subclass: " .. row.subclass .. " | Pups: " .. row.num_pups .. " | SecPerPup: " .. row.avg_seconds .. " | GoldPerSec: " .. row.avg_gold_per_second)
-        elseif report_type == "area" then
-            print("Area: " .. row.area .. " | Pups: " .. row.num_pups .. " | SecPerPup: " .. row.avg_seconds .. " | GoldPerSec: " .. row.avg_gold_per_second)
-        else
-            print("Pups: " .. row.num_pups .. " | SecPerPup: " .. row.avg_seconds .. " | GoldPerSec: " .. row.avg_gold_per_second)
-        end
+        print((report_type == "subclass" and "Subclass: " .. row.subclass or report_type == "area" and "Area: " .. row.area or "") .. " | Pups: " .. row.num_pups .. " | SecPerPup: " .. row.avg_seconds .. " | GoldPerSec: " .. row.avg_gold_per_second)
     end
-    if not found then
-        print("No pup data found")
-    end
+    if not found then print("No pup data found") end
     db:close()
-
 end
 
 
