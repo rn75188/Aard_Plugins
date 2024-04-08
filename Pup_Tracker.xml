@@ -114,6 +114,8 @@ solo = 1        --Used to track whether user is pupping solo or in group. 0 = gr
 reload = 0      --Used to discard first pup after script is loaded
 current_date = os.date("%Y-%m-%d")
 char_subclass = "Unknown"
+current_area = "Unknown"
+last_area = "Unknown"
 
 function OnPluginInstall()
     print("Pup Tracker installed.")
@@ -185,20 +187,6 @@ function OnPluginBroadcast(msg, id, name, text)
 end
 
 
-function get_pup_tracker()
-    local saved_tracker = GetVariable('pup_tracker')
-    local pup_tracker = tonumber(saved_tracker) or 5
-    SetVariable('pup_tracker', pup_tracker)
-    return pup_tracker
-end
-
-function pup_tracker_set(name, line, wildcards)
-    local input_tracker = GetAliasWildcard(name, 'pup_tracker_set')
-    local new_pup_tracker = tonumber(input_tracker) or get_pup_tracker()
-    SetVariable('pup_tracker', new_pup_tracker)
-    Note('Tracking Average Pups Over: ' .. new_pup_tracker)
-end
-
 function Bonus_on()
     print("Dbl tracking activated")
 	bonus_on = 1
@@ -251,8 +239,7 @@ function report_totals(name,line,wildcards)
     local db_path = GetInfo(66) .. "\\pup_tracker.db"
     local db = assert(sqlite3.open(db_path))
 
-    local report_type = tostring(wildcards[1]) ~= "" and wildcards[1] or "area"
-    report_type = (report_type == "area" or report_type == "subclass") and report_type or "area"
+    local report_type = tostring(wildcards[1])
 
     local period = tostring(wildcards[2]) ~= "" and wildcards[2] or "all"
     period = (period == "day" or period == "week" or period == "month" or period == "year" or period == "all") and period or "all"
@@ -267,25 +254,41 @@ function report_totals(name,line,wildcards)
 
     local days = period_days[period]
 
-    local solo_clause = ""
+    local select_clause = 
+        "COUNT(*) as num_pups, " ..
+        "ROUND(AVG(seconds),1) as avg_seconds, " ..
+        "ROUND(SUM(gold)/SUM(seconds),1) as avg_gold_per_second, " ..
+        "MIN(date) as oldest_date"
+
+    if report_type == "subclass" then
+        select_clause = "subclass, " .. select_clause
+    elseif report_type == "area" then
+        select_clause = "area, " .. select_clause
+    end
+
+    local where_clause = ""
     if solo_only == "solo" then
-        solo_clause = "AND solo = 1"
+        where_clause = "AND solo = 1"
     elseif solo_only == "group" then
-        solo_clause = "AND solo = 0"
+        where_clause = "AND solo = 0"
+    end
+
+    local group_by_clause = ""
+    if report_type == "subclass" then
+        group_by_clause = "GROUP BY subclass"
+    elseif report_type == "area" then
+        group_by_clause = "GROUP BY area"
     end
 
     local query = string.format([[
         SELECT 
-            area, 
-            COUNT(*) as num_pups, 
-            ROUND(AVG(seconds),1) as avg_seconds, 
-            ROUND(SUM(gold)/SUM(seconds),1) as avg_gold_per_second,
-            MIN(date) as oldest_date
+            %s
         FROM pup_data 
         WHERE date(date) >= date('now', '%d days') 
         %s
-        GROUP BY area
-    ]], days, solo_clause)
+        %s
+    ]], select_clause, days, where_clause, group_by_clause)
+
 
     local found = false
     local oldest_date_printed = false
@@ -295,7 +298,13 @@ function report_totals(name,line,wildcards)
             print("Showing pup data since " .. row.oldest_date .. ":")
             oldest_date_printed = true
         end
-        print("Area: " .. row.area .. " | Pups: " .. row.num_pups .. " | SecPerPup: " .. row.avg_seconds .. " | GoldPerSec: " .. row.avg_gold_per_second)
+        if report_type == "subclass" then
+            print("Subclass: " .. row.subclass .. " | Pups: " .. row.num_pups .. " | SecPerPup: " .. row.avg_seconds .. " | GoldPerSec: " .. row.avg_gold_per_second)
+        elseif report_type == "area" then
+            print("Area: " .. row.area .. " | Pups: " .. row.num_pups .. " | SecPerPup: " .. row.avg_seconds .. " | GoldPerSec: " .. row.avg_gold_per_second)
+        else
+            print("Pups: " .. row.num_pups .. " | SecPerPup: " .. row.avg_seconds .. " | GoldPerSec: " .. row.avg_gold_per_second)
+        end
     end
     if not found then
         print("No pup data found")
