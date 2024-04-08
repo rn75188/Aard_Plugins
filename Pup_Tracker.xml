@@ -116,6 +116,8 @@ current_date = os.date("%Y-%m-%d")
 char_subclass = "Unknown"
 current_area = "Unknown"
 last_area = "Unknown"
+daily_double = 0
+daily_gold = 0
 
 function OnPluginInstall()
     print("Pup Tracker installed.")
@@ -149,7 +151,9 @@ function create_pup_table(db)
                 double TEXT NOT NULL,
                 solo TEXT NOT NULL,
                 date TEXT NOT NULL,
-                subclass TEXT NOT NULL
+                subclass TEXT NOT NULL,
+                daily_double INTEGER NOT NULL,
+                daily_gold INTEGER NOT NULL
             );
         ]])
     end
@@ -244,7 +248,13 @@ function report_totals(name,line,wildcards)
     local period_days = {day = -1, week = -7, month = -30, year = -365, all = -999999}
     local days = period_days[period] or period_days["all"]
 
-    local select_clause = "COUNT(*) as num_pups, ROUND(AVG(seconds),1) as avg_seconds, ROUND(SUM(gold)/SUM(seconds),1) as avg_gold_per_second, MIN(date) as oldest_date"
+
+    local select_clause = 
+        "COUNT(*) as num_pups, " ..
+        "ROUND(AVG(CASE WHEN double = 1 THEN seconds * 2 ELSE seconds END),1) as avg_seconds, " ..
+        "ROUND(SUM(gold)/SUM(seconds),1) as avg_gold_per_second, " ..
+        "MIN(date) as oldest_date"
+    
     local where_clause = ""
     local group_by_clause = ""
 
@@ -256,7 +266,9 @@ function report_totals(name,line,wildcards)
     if solo_only == "solo" then where_clause = "AND solo = 1"
     elseif solo_only == "group" then where_clause = "AND solo = 0" end
 
-    local query = string.format("SELECT %s FROM pup_data WHERE date(date) >= date('now', '%d days') %s %s", select_clause, days, where_clause, group_by_clause)
+    local query = string.format("SELECT %s FROM pup_data WHERE date(date) > date('now', '%d days') %s %s", select_clause, days, where_clause, group_by_clause)
+
+    --print(query)      -- Uncomment to see the query being run
 
     local found = false
     local oldest_date_printed = false
