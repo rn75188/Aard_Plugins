@@ -83,7 +83,7 @@ function OnPluginBroadcast(msg, id, name, text)
 		current_wis = tonumber(charstats.wis)
 		current_int = tonumber(charstats.int)
 	elseif (text == "char.base") then
-		charbase = gmcp("char.base")
+		local charbase = gmcp("char.base")
 		char_subclass = charbase.subclass
 	end
 end
@@ -118,7 +118,7 @@ function create_bypass_table(db)
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
 				area TEXT NOT NULL,
 				level INTEGER NOT NULL
-			);000000000000000000000
+			);
 		]])
 	end
 	
@@ -238,7 +238,7 @@ end
 function bypass_set()
 	local bypass_level = current_level
 	if char_subclass ~= "Navigator" then
-		print(char_subclass .. "'s can't use bypass, idiot.")
+		print(char_subclass .. "'s can't use bypass.")
 		return
 	elseif not bypass_level or bypass_level == 0 then
         print("Don't see current level. Go kill something and try again!")
@@ -279,7 +279,7 @@ function bypass_update(bypass_level)
     local db = assert(sqlite3.open(db_path))
 
 	local max_bypass = 2
-	if current_int + current_wis >= 400 and 600 > current_int + current_wis then 
+	if current_int + current_wis >= 600 and 1200 > current_int + current_wis then 
 		max_bypass = 3
 	elseif current_int + current_wis == 600 then 
 		max_bypass = 4

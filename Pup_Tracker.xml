@@ -60,16 +60,65 @@
 </trigger>
 
 <trigger
-	match="Congratulations, Tipro. You have increased your powerups to *."
+	match="Congratulations, *. You have increased your powerups to *."
 	name="trigger_pupGain"
 	enabled="y"
 	sequence="100"
 	script="pupDB"
 	omit_from_output="n"
 >
-<send>
-    
-</send>
+</trigger>
+
+<trigger
+	match="You have %d+ daily blessing bonus experience kills remaining."
+	name="trigger_dailyexp_on"
+	enabled="y"
+	sequence="100"
+	script="daily_expbonus_on"
+	omit_from_output="n"
+>
+</trigger>
+
+<trigger
+	match="^You have no daily blessing bonus experience kills remaining.$"
+	name="trigger_dailyexp_off"
+	enabled="y"
+	sequence="100"
+	script="daily_expbonus_off"
+	omit_from_output="n"
+>
+</trigger>
+
+<trigger
+	match="You receive * experience points."
+	name="trigger_regular_xp_gain"
+	enabled="y"
+	sequence="100"
+	script="regular_xp_gain"
+	omit_from_output="n"
+    send_to="12"
+>
+</trigger>
+
+<trigger
+	match="You receive * 'rare kill' experience bonus."
+	name="trigger_rare_xp_gain"
+	enabled="y"
+	sequence="100"
+	script="rare_xp_gain"
+	omit_from_output="n"
+    send_to="12"
+>
+</trigger>
+
+<trigger
+	match="^You killed a Trivia Point bonus mob\!\! Trivia point added\.$"
+	name="trigger_tp_mob"
+	enabled="y"
+	sequence="100"
+	script="tp_mob"
+	omit_from_output="n"
+>
 </trigger>
 
 </triggers>
@@ -158,6 +207,19 @@ function create_pup_table(db)
         ]])
     end
 
+    if not db_tables["exp_tracker"] then
+        print("Creating table 'exp_tracker'")
+        table.insert(create_tables, [[
+            CREATE TABLE exp_tracker (
+                area TEXT NOT NULL,
+                reg_xp INTEGER NOT NULL,
+                rare_xp INTEGER NOT NULL,
+                mobs_killed INTEGER NOT NULL,
+                tp_mobs INTEGER NOT NULL
+            );
+        ]])
+    end
+
     if #create_tables > 0 then
         db:execute(table.concat(create_tables,""))
     end
@@ -171,29 +233,41 @@ function OnPluginBroadcast(msg, id, name, text)
     if (text == "room.info") then
        roominfo = gmcp("room.info")
        current_area = roominfo.zone
-	elseif (text == "char.worth") then
-		charworth = gmcp("char.worth")
-		current_gold = charworth.gold
-		if previous_gold == 0 then previous_gold = current_gold end
+    elseif (text == "char.worth") then
+        charworth = gmcp("char.worth")
+        current_gold = charworth.gold
+        if previous_gold == 0 then previous_gold = current_gold end
     elseif (text == "group") then
         members = gmcp("group.members")
         solo = 1
-        for i, member in ipairs(members) do
-            if member.here == 1 then
-                solo = 0
+        if type(members) == 'table' then
+            for i, member in ipairs(members) do
+                if member.here == 1 then
+                    solo = 0
+                end
             end
+        else
+            print("Error: Expected table, got " .. type(members))
         end
     elseif (text == "char.base") then
-		charbase = gmcp("char.base")
-		char_subclass = charbase.subclass
+        charbase = gmcp("char.base")
+        char_subclass = charbase.subclass
     end
   end
 end
 
-
 function Bonus_on()
     print("Dbl tracking activated")
 	bonus_on = 1
+end
+
+function daily_expbonus_on()
+    daily_double = 1
+    print(daily_double)
+end
+
+function daily_expbonus_off()
+    daily_double = 0
 end
 
 function pupDB()
@@ -205,19 +279,16 @@ function pupDB()
         return
     end
     
+    last_area = current_area
     local seconds = os.time() - last_pup_time
-    if (seconds > 60) then
-        print(seconds .. " since last pup. Too slow")
+    if (seconds > 60 or last_area ~= current_area or reload == 0) then
+        print("Discarding. Too slow, changed areas, or just reloaded. Try again.")
         last_pup_time = os.time()
-        reload = 1
-        return
-    elseif (reload == 0) then
-        print("First pup after reload discarded. Keep going.")
         reload = 1
         return
     end
     last_pup_time = os.time()
-    local gold_gained = current_gold - previous_gold
+    local gold_gained = (current_gold - previous_gold) or 0
     if 0 > gold_gained then
         print("Gold loss detected. Ignoring.")
         gold_gained = 0
@@ -227,14 +298,18 @@ function pupDB()
 
     --print(current_date)
 
-    local insert_sql = string.format("INSERT INTO pup_data (seconds, area, gold, double, solo, date, subclass) VALUES (%d, '%s', %d, '%s', '%s', '%s', '%s');", seconds, current_area, gold_gained, double, solo, current_date, char_subclass)
-    	local result, err = db:execute(insert_sql)
-		if not result then
-			Note("Error inserting pup_data: " .. tostring(err))
-            --print (gold_gained, seconds, bonus_on, solo, current_area)
-        else
-			--Note ("Pup stats: Gold " .. gold_gained .. " Seconds " .. seconds .. " Bonus " .. bonus_on .. " Solo " .. solo .. " Area " .. current_area)
-		end
+    local insert_sql = string.format("INSERT INTO pup_data (seconds, area, gold, double, solo, date, subclass, daily_double, daily_gold) VALUES (%d, '%s', %d, '%s', '%s', '%s', '%s', %d, %d);", seconds, current_area, gold_gained, bonus_on, solo, current_date, char_subclass, daily_double, daily_gold)
+    local result, err = db:execute(insert_sql)
+    if not result then
+        Note("Error inserting pup_data: " .. tostring(err))
+    else
+        Note ("Gold " .. gold_gained .. " Seconds " .. seconds .. " Bonus " .. bonus_on .. " Daily_xp " .. daily_double)
+        local count_query = "SELECT COUNT(*) as count FROM pup_data;"
+        for row in db:nrows(count_query) do
+            print("Total rows in pup_data: " .. row.count)
+        end
+    end
+
     db:close()
 end
 
@@ -251,10 +326,10 @@ function report_totals(name,line,wildcards)
 
     local select_clause = 
         "COUNT(*) as num_pups, " ..
-        "ROUND(AVG(CASE WHEN double = 1 THEN seconds * 2 ELSE seconds END),1) as avg_seconds, " ..
+        "ROUND(AVG(CASE WHEN daily_double = 1 AND double = 1 THEN seconds * 3 WHEN daily_double = 1 OR double = 1 THEN seconds * 2 ELSE seconds END),1) as avg_seconds, " ..
         "ROUND(SUM(gold)/SUM(seconds),1) as avg_gold_per_second, " ..
         "MIN(date) as oldest_date"
-    
+        
     local where_clause = ""
     local group_by_clause = ""
 
@@ -274,12 +349,18 @@ function report_totals(name,line,wildcards)
     local oldest_date_printed = false
     for row in db:nrows(query) do
         found = true
-        if not oldest_date_printed then
+        if not oldest_date_printed and row.oldest_date then
             print("Showing pup data since " .. row.oldest_date .. ":")
             oldest_date_printed = true
         end
-        print((report_type == "subclass" and "Subclass: " .. row.subclass or report_type == "area" and "Area: " .. row.area or "") .. " | Pups: " .. row.num_pups .. " | SecPerPup: " .. row.avg_seconds .. " | GoldPerSec: " .. row.avg_gold_per_second)
+        local subclass = row.subclass or "N/A"
+        local area = row.area or "N/A"
+        local num_pups = row.num_pups or "N/A"
+        local avg_seconds = row.avg_seconds or "N/A"
+        local avg_gold_per_second = row.avg_gold_per_second or "N/A"
+        print((report_type == "subclass" and "Subclass: " .. subclass or report_type == "area" and "Area: " .. area or "") .. " | Pups: " .. num_pups .. " | SecPerPup: " .. avg_seconds .. " | GoldPerSec: " .. avg_gold_per_second)
     end
+
     if not found then print("No pup data found") end
     db:close()
 end
@@ -321,6 +402,90 @@ function pup_helper()
     print("Pup Tracker Help:")
     print("pup report [area|sublass] [day|week|month|year|all] [solo|group]")
     print("pup table reset")
+end
+
+
+function regular_xp_gain(name,line,wildcards)
+    
+    local db_path = GetInfo(66) .. "\\pup_tracker.db"
+    local db, err = assert(sqlite3.open(db_path))
+    
+    if not db then
+        print("Failed to connect to the database: " .. err)
+        return
+    end
+
+    local experience = wildcards[1] -- get the matched string
+    local numbers = {} -- table to hold the numbers
+
+    for number in string.gmatch(experience, "%d+") do
+        table.insert(numbers, tonumber(number) or 0)
+    end
+
+    local reg_exp_gained = 0
+    for _, number in ipairs(numbers) do
+        reg_exp_gained = reg_exp_gained + number
+    end
+
+    if reg_exp_gained == 0 then
+        return
+    end
+
+    local query = string.format("SELECT * FROM exp_tracker WHERE area = '%s'", current_area)
+    local exists = false
+
+    for row in db:nrows(query) do
+        exists = true
+        break
+    end
+
+    if exists then
+        query = string.format("UPDATE exp_tracker SET reg_xp = reg_xp + %d, mobs_killed = mobs_killed + 1 WHERE area = '%s'", reg_exp_gained, current_area)
+    else
+        query = string.format("INSERT INTO exp_tracker (area, reg_xp, rare_xp, mobs_killed, tp_mobs) VALUES ('%s', %d, 0, 1, 0)", current_area, reg_exp_gained)
+    end
+
+    db:exec(query) 
+    --print(query)
+
+    db:close()
+end
+
+
+function rare_xp_gain(name,line,wildcards)
+    local db_path = GetInfo(66) .. "\\pup_tracker.db"
+    local db, err = assert(sqlite3.open(db_path))
+
+    if not db then
+        print("Failed to connect to the database: " .. err)
+        return
+    end
+
+    local rare_gained = tonumber(wildcards[1])
+    
+    local query = string.format("UPDATE exp_tracker SET rare_xp = rare_xp + %d WHERE area = '%s'", rare_gained, current_area)
+
+    db:exec(query)
+    --print(query)
+
+    db:close()
+end
+
+function tp_mob()
+    local db_path = GetInfo(66) .. "\\pup_tracker.db"
+    local db, err = assert(sqlite3.open(db_path))
+
+    if not db then
+        print("Failed to connect to the database: " .. err)
+        return
+    end
+
+    local query = string.format("UPDATE exp_tracker SET tp_mobs = tp_mobs + 1 WHERE area = '%s'", current_area)
+
+    db:exec(query)
+    print(query)
+
+    db:close()
 end
 
 </script>
