@@ -93,12 +93,17 @@ end
 -- Add missing import statement for the print function
 local print = print
 
+
 function keyring_cleanup()
     local seen_names = {}
     local duplicate_count = 0
 
     table.sort(keyring_data, function(a, b)
-        return a.objectname < b.objectname
+        if a.objectname == b.objectname then
+            return a.objectid > b.objectid
+        else
+            return a.objectname < b.objectname
+        end
     end)
 
     for i, data in ipairs(keyring_data) do
@@ -119,7 +124,8 @@ function keyring_cleanup()
 
     keyring_data = {}
 end
- 
+
+
 ]]>
 </script>
 </muclient>
