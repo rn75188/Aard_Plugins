@@ -64,7 +64,7 @@ Type 'keyring_clean' to remove all duplicates from your keyring.
 <aliases>
  
 <alias
-    match="^keyring clean$"
+    match="^keyring_clean$"
     regexp="y"
     enabled="y"
     sequence="100"
