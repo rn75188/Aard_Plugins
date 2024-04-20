@@ -64,7 +64,7 @@ Type 'keyring_clean' to remove all duplicates from your keyring.
 <aliases>
  
 <alias
-    match="^keyring_clean$"
+    match="^keyring clean$"
     regexp="y"
     enabled="y"
     sequence="100"
@@ -95,6 +95,7 @@ local print = print
 
 
 function keyring_cleanup()
+    send("keyring put all")
     local seen_names = {}
     local duplicate_count = 0
 
