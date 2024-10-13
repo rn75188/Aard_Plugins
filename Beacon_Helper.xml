@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<muclient>
+<plugin
+   name="Beacon_Mapper"
+   author="Tipro"
+   id="f577a583603180d4b8ceacac"
+   language="Lua"
+   purpose="Adds beacons to your mapper."
+   save_state="y"
+   date_written="2024-10-13 11:00:00"
+   requires="2.0"
+   version="1"
+   >
+<description trim="y">
+<![CDATA[
+]]>
+</description>
+</plugin>
+<include name="constants.lua"/>
+
+<aliases>
+   	<alias
+		match="^beacon_help?"
+		regexp="y"
+		enabled="y"
+		script="beacon_help"
+	> </alias>	
+	
+	<alias
+		match="^beacon_(setnew|setcurrent)$"
+		regexp="y"
+		enabled="y"
+		script="set_beacon"
+	> </alias>
+  	
+	<alias
+		match="^beacon_clear?"
+		regexp="y"
+		enabled="y"
+		script="delete_beacons"
+	> </alias>
+	
+	<alias
+		match="^beacon_list?"
+		regexp="y"
+		enabled="y"
+		script="get_mapper_beacons"
+	> </alias>
+	
+	<alias
+		match="^beacon_autotrack_(on|off)$"
+		regexp="y" enabled="y"
+		script="toggle_beacon_autotrack"
+	> </alias>
+		
+</aliases>
+
+<triggers>
+
+	<trigger
+		name="beacon_capture"
+		match="A deep black beacon appears before you."
+		enabled="y"  regexp="y"	sequence="100" send_to="12"
+		script="beacon_capture" 
+	> </trigger>
+
+</triggers>
+
+<script>
+require("gmcphelper")
+require("aardwolf_colors")
+require("tprint")
+local sqlite3 = require("sqlite3")  -- Make sure sqlite3 module is loaded
+
+
+----------------------- Plugin Callbacks -----------------------
+
+function OnPluginBroadcast(msg, id, name, text)
+	if id ~= "3e7dedbe37e44942dd46d264" then -- message from the GMCP Handler
+		return end
+	
+	if (text == "room.info") then
+       roominfo = gmcp("room.info")
+       current_area = roominfo.zone
+	   current_room = roominfo.num
+	   
+	elseif (text == "char.status") then
+       charstatus = gmcp("char.status")
+       current_level = tonumber(charstatus.level)
+	end
+end
+
+function OnPluginInstall()
+	print("Beacon Plugin Installed Successfully.")
+	print("beacon_help to see available commands.")
+end
+
+----------------------- Help File Code -----------------------
+function beacon_help()
+	print("beacon_list to show all current beacons in your mapper.")
+	print("beacon_clear to clear all beacons in your mapper.")
+	print("beacon_setnew to cast beacon in your current room and add to mapper.")
+	print("beacon_setcurrent to manually set your current room as the beacon destination.")
+	print("beacon_autotrack_[on/off] to toggle automatically updating beacon when new destination is seen. Defaults to on.") 
+	print("beacon_help to repeat this menu.")
+end
+
+
+----------------------- DB Functions -------------------------
+
+function open_db()
+    return assert(sqlite3.open(GetInfo(66) .. "Aardwolf.db"))
+end
+
+function close_db(db)
+    db:close()
+end
+
+function get_mapper_beacons()
+    local db = open_db()
+    beacon_portals = {}
+
+    local query = 'SELECT * FROM exits WHERE fromuid="*" AND dir="cast homecoming"'
+    for row in db:nrows(query) do
+        table.insert(beacon_portals, {
+            dest = row.touid,
+            cmd = row.dir,
+            lock = tonumber(row.level) or 0,
+        })
+    end
+
+    close_db(db)
+
+    print_beacons(beacon_portals)
+end
+
+function print_beacons(portals)
+    if #portals == 0 then
+        print("No beacons found in mapper.")
+        return
+    end
+
+    for index, portal in ipairs(portals) do
+        print(string.format("Portal %d: dest=%s, cmd=%s, lock=%d", 
+            index, portal.dest or "nil", portal.cmd or "nil", portal.lock or 0))
+    end
+end
+
+function delete_beacons()
+    local db = open_db()
+
+    local delete_query = 'DELETE FROM exits WHERE fromuid = "*" AND dir = "cast homecoming"'
+    local result = db:exec(delete_query)
+
+    if result == sqlite3.OK then
+        local rows_deleted = db:changes()
+        print(string.format("%d record(s) deleted.", rows_deleted))
+    else
+        print("Error deleting beacon entries: " .. tostring(result))
+    end
+
+    close_db(db)
+end
+
+
+----------------------- Plugin Code -----------------------
+
+function set_beacon(name,line,wildcards)
+	local state = wildcards[1]
+	delete_beacons() -- Delete any existing beacons from the mapper.
+	if state == "setcurrent" then
+		beacon_capture()
+	elseif state == "setnew" then
+		Send("cast beacon")
+	else
+		print("Improper command to setbeacon. Try beaconset_new or beaconset_current.")
+	end
+end
+
+
+function beacon_capture()
+	local roomid = tonumber(current_room)
+    local command = string.format("mapper fullportal {cast homecoming} {%d} 0", roomid)
+    Execute(command)
+end	
+
+
+function toggle_beacon_autotrack(name, line, wildcards)
+    local action = wildcards[1]  -- Capture "on" or "off" from the alias match
+	local is_enabled = IsTriggerEnabled("beacon_capture")
+	
+	if action == "on" and not is_enabled then
+        EnableTrigger("beacon_capture", true)
+        print("Beacon autotrack is now ON.")
+    elseif action == "off" and is_enabled then
+        EnableTrigger("beacon_capture", false)
+        print("Beacon autotrack is now OFF.")
+    else
+        print("Beacon autotrack is already " ..action:upper() .. ".")
+    end
+end
+
+
+</script>
+
+
+</muclient>
