@@ -27,7 +27,7 @@
 		enabled="y"
 		script="beacon_help"
 	> </alias>	
-	
+		
 	<alias
 		match="^beacon_(setnew|setcurrent)$"
 		regexp="y"
@@ -46,7 +46,7 @@
 		match="^beacon_list?"
 		regexp="y"
 		enabled="y"
-		script="get_mapper_beacons"
+		script="beacon_list"
 	> </alias>
 	
 	<alias
@@ -59,12 +59,22 @@
 
 <triggers>
 
+--- String when new beacon is set ---
 	<trigger
 		name="beacon_capture"
 		match="A deep black beacon appears before you."
 		enabled="y"  regexp="y"	sequence="100" send_to="12"
 		script="beacon_capture" 
 	> </trigger>
+
+--- String when no active beacons are found ---
+	<trigger
+		name="no_active_beacons"
+		match="You have no active beacons."
+		enabled="y"  regexp="y"	sequence="100" send_to="12"
+		script="delete_beacons" 
+	> </trigger>
+
 
 </triggers>
 
@@ -95,6 +105,11 @@ end
 function OnPluginInstall()
 	print("Beacon Plugin Installed Successfully.")
 	print("beacon_help to see available commands.")
+	print(" ")
+	print("Current beacons in mapper. Use beacon_clear to remove.")
+	get_mapper_beacons()
+	command = "beacons"
+	Execute(command)
 end
 
 ----------------------- Help File Code -----------------------
@@ -118,35 +133,58 @@ function close_db(db)
     db:close()
 end
 
-function get_mapper_beacons()
+
+
+function get_mapper_beacons(print_unique_names)
+
     local db = open_db()
     beacon_portals = {}
+    unique_room_info = {} -- To store unique room info (name and UID)
 
-    local query = 'SELECT * FROM exits WHERE fromuid="*" AND dir="cast homecoming"'
-    for row in db:nrows(query) do
-        table.insert(beacon_portals, {
-            dest = row.touid,
-            cmd = row.dir,
-            lock = tonumber(row.level) or 0,
-        })
+    local query_exits = 'SELECT * FROM exits WHERE fromuid="*" AND dir="cast homecoming"'
+    for row in db:nrows(query_exits) do
+        local dest = row.touid
+        if dest then  -- Check if dest is not nil
+            -- Insert the beacon portal details from the exits query
+            table.insert(beacon_portals, {
+                dest = row.touid,
+                cmd = row.dir,
+                lock = tonumber(row.level) or 0
+            })
+        end
     end
 
     close_db(db)
 
     print_beacons(beacon_portals)
+
 end
 
-function print_beacons(portals)
-    if #portals == 0 then
+function print_beacons(beacon_portals)
+    local db = open_db()
+    
+    if #beacon_portals == 0 then
         print("No beacons found in mapper.")
         return
     end
 
-    for index, portal in ipairs(portals) do
-        print(string.format("Portal %d: dest=%s, cmd=%s, lock=%d", 
-            index, portal.dest or "nil", portal.cmd or "nil", portal.lock or 0))
+    for index, portal in ipairs(beacon_portals) do
+        -- Create the SQL query for each portal to get the room name
+        local query_roomnames = string.format('SELECT name FROM rooms WHERE UID="%s"', portal.dest)
+
+        local roomname = "nil"  -- Default value if no room name is found
+        for row in db:nrows(query_roomnames) do
+            roomname = row.name or "nil"  -- Capture room name if found
+        end
+
+        -- Print the beacon details with the room name (excluding cmd)
+        print(string.format("Portal %d: dest=%s, roomname=%s", 
+            index, portal.dest or "nil", roomname))
     end
+
+    close_db(db)
 end
+
 
 function delete_beacons()
     local db = open_db()
@@ -179,7 +217,6 @@ function set_beacon(name,line,wildcards)
 	end
 end
 
-
 function beacon_capture()
 	local roomid = tonumber(current_room)
     local command = string.format("mapper fullportal {cast homecoming} {%d} 0", roomid)
@@ -202,6 +239,11 @@ function toggle_beacon_autotrack(name, line, wildcards)
     end
 end
 
+function beacon_list()
+	command = string.format("beacons")
+	SendNoEcho(command)
+	get_mapper_beacons()
+end
 
 </script>
 
