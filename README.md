@@ -6,7 +6,7 @@ Keyring: Type "keyring_clean" and it will remove all duplicate keys from your ke
 
 Full Prac: Convert trains to pracs, full prac everything you can, then reconvert back to trains.
 
-ChaosPortal Counter: Under development. Best avoided.
+ChaosPortal Counter: Fork of Sath's chaosmap plugin that adds a counter function. Try "chaosmap list counter".
 
 SND: Stock search & destroy, but a new xcp mode "search" added. On area campaigns will search mob DB and run to the best option, then quick scan.
 

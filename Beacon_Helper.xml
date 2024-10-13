@@ -69,8 +69,16 @@
 
 --- String when no active beacons are found ---
 	<trigger
-		name="no_active_beacons"
+		name="no_active_beacons_1"
 		match="You have no active beacons."
+		enabled="y"  regexp="y"	sequence="100" send_to="12"
+		script="delete_beacons" 
+	> </trigger>
+
+
+	<trigger
+		name="no_active_beacons_2"
+		match="You have no homecoming beacon."
 		enabled="y"  regexp="y"	sequence="100" send_to="12"
 		script="delete_beacons" 
 	> </trigger>
