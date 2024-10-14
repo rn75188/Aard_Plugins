@@ -28,8 +28,6 @@ Type 'keyring_clean' to remove all duplicates from your keyring.
     sequence="100"
     send_to="14"
 >
-<send>
-</send>
 </trigger>
  
 <trigger
@@ -95,7 +93,8 @@ local print = print
 
 
 function keyring_cleanup()
-    send("keyring put all")
+    command = "keyring put all"
+    Execute(command)
     local seen_names = {}
     local duplicate_count = 0
 
