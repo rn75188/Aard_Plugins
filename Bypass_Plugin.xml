@@ -63,6 +63,11 @@
 		script="bypass_clear"
         enabled="y" regexp="y" sequence="100" ignore_case="y" send_to="12" > </alias>
 
+	<alias
+		match="^bypass_check (\d+)"
+		script="bypass_check"
+        enabled="y" regexp="y" sequence="100" ignore_case="y" send_to="12" > </alias>
+
 </aliases>
 
 
@@ -88,12 +93,16 @@ function OnPluginBroadcast(msg, id, name, text)
 	end
 end
 
+function open_db()
+	local db_path = GetInfo(66) .. "\\bypass.db"
+	return assert(sqlite3.open(db_path))
+end
+
 
 -- [[ Plugin installation ]]
 function OnPluginInstall()
-	local db_path = GetInfo(66) .. "\\bypass.db"
-	local db = assert(sqlite3.open(db_path))
-	
+	db=open_db()
+
 	create_bypass_table(db)
 	
 	db:close()
@@ -149,8 +158,7 @@ function bypass_add(name,line,wildcards)
 		return
 	end
 
-	local db_path = GetInfo(66) .. "\\bypass.db"
-	local db = assert(sqlite3.open(db_path))
+	db=open_db()
 
 	--Ensure user doesn't have too many areas bypassed for that level--
 	local check_query = string.format("SELECT COUNT(*) as count FROM bypass_list WHERE level == %d", bypass_level)
@@ -265,8 +273,6 @@ function bypass_level (name,line,wildcards)
 	for _ in db:nrows(entry_query) do
 		count = count + 1
 	end
---	print(count)
-			
 	if count > 0 then
 		bypass_update(new_level)
 	end
@@ -318,6 +324,14 @@ function bypass_clear()
     db:close()  -- Close the database connection
 end
 
+function bypass_check(name,line,wildcards)
+	level_check=wildcards[1]
+	print(level_check)
+
+	db=open_db()
+
+
+end
 
 </script>
 

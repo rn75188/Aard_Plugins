@@ -54,12 +54,17 @@
 		regexp="y" enabled="y"
 		script="toggle_beacon_autotrack"
 	> </alias>
+
+	<alias
+		match="^beacon_reload$"
+		regexp="y" enabled="y"
+		script="reload_plugin"
+	> </alias>
 		
 </aliases>
 
 <triggers>
 
---- String when new beacon is set ---
 	<trigger
 		name="beacon_capture"
 		match="A deep black beacon appears before you."
@@ -67,7 +72,6 @@
 		script="beacon_capture" 
 	> </trigger>
 
---- String when no active beacons are found ---
 	<trigger
 		name="no_active_beacons_1"
 		match="You have no active beacons."
@@ -122,14 +126,15 @@ end
 
 ----------------------- Help File Code -----------------------
 function beacon_help()
+	print("Cast a beacon and this plugin adds it to your mapper as a portal exit, ensuring it will be used when it provides the fastest route to your destination.")
+	print("")
 	print("beacon_list to show all current beacons in your mapper.")
 	print("beacon_clear to clear all beacons in your mapper.")
-	print("beacon_setnew to cast beacon in your current room and add to mapper.")
 	print("beacon_setcurrent to manually set your current room as the beacon destination.")
-	print("beacon_autotrack_[on/off] to toggle automatically updating beacon when new destination is seen. Defaults to on.") 
+	print("beacon_autotrack_[on/off] to toggle this plugin.") 
+	print("beacon_reload to relaod this plugin.")
 	print("beacon_help to repeat this menu.")
 end
-
 
 ----------------------- DB Functions -------------------------
 
@@ -140,8 +145,6 @@ end
 function close_db(db)
     db:close()
 end
-
-
 
 function get_mapper_beacons(print_unique_names)
 
@@ -193,7 +196,6 @@ function print_beacons(beacon_portals)
     close_db(db)
 end
 
-
 function delete_beacons()
     local db = open_db()
 
@@ -210,7 +212,6 @@ function delete_beacons()
     close_db(db)
 end
 
-
 ----------------------- Plugin Code -----------------------
 
 function set_beacon(name,line,wildcards)
@@ -226,6 +227,8 @@ function set_beacon(name,line,wildcards)
 end
 
 function beacon_capture()
+	print("Beacon_Helper: Deleting any current beacons and resetting to current room.")
+	delete_beacons()
 	local roomid = tonumber(current_room)
     local command = string.format("mapper fullportal {cast homecoming} {%d} 0", roomid)
     Execute(command)
@@ -251,6 +254,23 @@ function beacon_list()
 	command = string.format("beacons")
 	SendNoEcho(command)
 	get_mapper_beacons()
+end
+
+function reload_plugin()
+    local scriptPrefix = GetAlphaOption("script_prefix")
+    local retval
+
+    -- If the user has not already specified the script prefix for this version of mush, pick a
+    -- reasonable default value
+    if (scriptPrefix == "") then
+        scriptPrefix = "\\\\\\"
+        SetAlphaOption("script_prefix", scriptPrefix)
+    end
+
+    -- Tell mush to reload the plugin in one second.  We can't do it directly here because a
+    -- plugin can't unload itself.  Even if it could, how could it tell mush to load it again
+    -- if it weren't installed? 
+    retval = Execute(scriptPrefix.."DoAfterSpecial(0.1, \"ReloadPlugin('"..GetPluginID().."')\", sendto.script)")
 end
 
 </script>

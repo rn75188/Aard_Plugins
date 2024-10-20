@@ -57,6 +57,13 @@ All credit to Sath, I am attempting here a very minor edit to count the times ea
         script="list_alias"
         sequence="100"
     />
+    <alias
+        match="^chaosmap counter?"
+        regexp="y"
+        enabled="y"
+        script="counter_alias"
+        sequence="100"
+    />
 
     <alias
         match="^chaosmap delete (\w+)$"
@@ -315,6 +322,7 @@ local help_topics = {
         {"chaosmap gq start|end",          "Disable/re-enable non-golden chaos portals."},
 		{"chaosmap reload",                "Reloads the plugin."},
 		{"chaosmap update check|install",  "Checks/installs the most recent version."},
+		{"chaosmap counter",               "Displays usage count for all chaos portals."},
     },
 }
 
@@ -655,7 +663,6 @@ function list_alias(name, line, wc)
     local counter = false
     if wc[1] == "counter" then 
         counter = true
-        print(counter)
     end
 
     local chaos_portals_sorted = {}
@@ -1144,7 +1151,6 @@ function close_counter_db(db)
     db:close()
 end
 
-
 function update_chaos_tracker(current_portal)
     db=open_counter_db()
     local portal_id = current_portal.id
@@ -1173,6 +1179,11 @@ function update_chaos_tracker(current_portal)
     close_counter_db(db)
 
 end
+
+function counter_alias()
+    list_alias(nil, nil, {"counter"})
+end
+
 
 
 ----------------------- Plugin Update Code -----------------------
